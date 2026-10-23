@@ -116,9 +116,9 @@ class WorkflowJob(Job):
             self.audit_path = self.aos.export_log()
 
     def step_acb(self, step: WorkflowStep) -> Optional[AgentControlBlock]:
-        """The ACB submitted for a step (matched by the agent it was submitted to)."""
+        """The ACB submitted for a step (the workflow labels each task with its step name)."""
         for acb in self.aos.tasks:
-            if acb.original_agent_id == step.agent_id:
+            if acb.label == step.name:
                 return acb
         return None
 
@@ -134,7 +134,7 @@ class WorkflowJob(Job):
         if acb.start_time is None:
             return "queued"
         pending = self.broker.pending()
-        if pending is not None and pending.agent_name == self.aos.agent(acb.agent_id).name:
+        if pending is not None and acb.agent_id and pending.agent_name == self.aos.agent(acb.agent_id).name:
             return "awaiting approval"
         return "running"
 

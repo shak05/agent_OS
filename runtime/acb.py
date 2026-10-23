@@ -18,10 +18,14 @@ class AgentControlBlock:
     """Everything the kernel knows about one submitted task."""
 
     task_id: str
-    agent_id: str  # agent currently assigned (changes on reassignment)
+    # Agent currently assigned (changes on reassignment). "" = not yet bound:
+    # the dispatcher binds an instance when the task is dispatched.
+    agent_id: str
     task_input: Any = None
     priority: int = 5  # lower number = higher priority
     required_permissions: tuple[str, ...] = ()
+    required_capabilities: tuple[str, ...] = ()  # used by the dispatcher
+    label: str = ""  # free-form tag, e.g. the workflow step name
     state: AgentState = AgentState.WAITING
     submit_time: float = field(default_factory=now)
     start_time: Optional[float] = None
@@ -29,7 +33,7 @@ class AgentControlBlock:
     attempt_log: list[str] = field(default_factory=list)  # agent id per attempt
     result: Any = None
     error: Optional[str] = None
-    # pending | completed | escalated | denied | rejected
+    # pending | completed | escalated | denied | rejected | no_agent
     outcome: str = "pending"
     seq: int = 0  # submission order, set by the scheduler (FIFO tie-break)
     original_agent_id: str = ""
@@ -77,6 +81,8 @@ class AgentControlBlock:
             "task_id": self.task_id,
             "agent_id": self.agent_id,
             "original_agent_id": self.original_agent_id,
+            "label": self.label,
+            "required_capabilities": list(self.required_capabilities),
             "priority": self.priority,
             "state": self.state.value,
             "outcome": self.outcome,

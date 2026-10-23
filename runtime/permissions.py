@@ -1,7 +1,11 @@
-"""Capability-based permission manager (deny by default).
+"""Permission manager (deny by default).
 
-An agent may only perform an action if it holds that capability. Sensitive
+An agent may only perform an action if it holds a grant for it. Sensitive
 actions additionally need a human (or automated) confirmation.
+
+Note: permissions (what an agent is ALLOWED to do) are separate from agent
+capabilities (what it CAN do, used by the dispatcher). Having a capability
+never implies a grant.
 """
 from __future__ import annotations
 
@@ -91,15 +95,20 @@ class PermissionManager:
         with self._lock:
             self._grants.get(agent_id, set()).difference_update(actions)
 
-    def capabilities(self, agent_id: str) -> frozenset[str]:
+    def granted(self, agent_id: str) -> frozenset[str]:
+        """Permissions currently granted to an agent."""
         with self._lock:
             return frozenset(self._grants.get(agent_id, set()))
+
+    def capabilities(self, agent_id: str) -> frozenset[str]:
+        """Historical name for granted() (kept for existing callers)."""
+        return self.granted(agent_id)
 
     def check(
         self, agent: "Agent", action: str, detail: str = "", task_id: Optional[str] = None
     ) -> None:
         """Allow, or raise PermissionDeniedError / ConfirmationRejectedError."""
-        if action not in self.capabilities(agent.id):
+        if action not in self.granted(agent.id):
             self._log("permission_denied", task_id, agent, action, detail)
             raise PermissionDeniedError(agent.name, action)
 
@@ -119,4 +128,7 @@ class PermissionManager:
     ) -> None:
         if self.audit is not None:
             extra = {"detail": detail} if detail else {}
-            self.audit.record(event, task_id=task_id, agent=agent.name, action=action, **extra)
+            self.audit.record(
+                event, task_id=task_id, agent=agent.name, agent_id=agent.id,
+                agent_type=type(agent).__name__, action=action, **extra,
+            )

@@ -12,7 +12,8 @@ class FileManagerAgent(Agent):
     """Input: {"src": "drafts/a.pptx", "dest": "reports/a.pptx", "mode": "move" | "copy"}."""
 
     def __init__(self, name: str = "FileManagerAgent", agent_id: Optional[str] = None) -> None:
-        super().__init__(name, permissions=["read_file", "write_file"], agent_id=agent_id)
+        super().__init__(name, permissions=["read_file", "write_file"], agent_id=agent_id,
+                         capabilities=["file_read", "file_write"])
 
     def run(self, task_input: dict[str, Any]) -> dict[str, Any]:
         mode = task_input.get("mode", "move")

@@ -125,7 +125,7 @@ def page_overview() -> None:
     cards = [
         (":material/schedule:", "Scheduler", "Pluggable policies: FIFO, Priority and Aging (anti-starvation)."),
         (":material/shield:", "Permissions", f"Capability-based, deny by default. Human approval for {', '.join(sorted(SENSITIVE_ACTIONS))}."),
-        (":material/healing:", "Recovery", "Retry the same agent, reassign to a backup agent, then escalate."),
+        (":material/healing:", "Recovery", "Retry the same agent, reassign to a compatible instance, then escalate."),
         (":material/receipt_long:", "Audit log", "Every decision is timestamped and exportable to JSON."),
     ]
     cols = st.columns(4)
@@ -143,7 +143,9 @@ def page_overview() -> None:
             st.caption(perm)
         if i < len(steps) - 1:
             cols[i * 2 + 1].markdown('<div class="aos-step-arrow">&rarr;</div>', unsafe_allow_html=True)
-    st.caption("A BackupResearchAgent is registered so recovery can take over if the primary researcher fails.")
+    st.caption("Each step is dispatched by capability to one of 9 registered instances "
+               "(3 research, 2 docgen, 2 file manager, 2 email). If an instance fails, recovery "
+               "moves the task to another compatible instance.")
 
     st.subheader("Latest activity")
     mgr = get_manager()
@@ -225,9 +227,9 @@ def render_workflow_live(job: WorkflowJob) -> None:
             st.markdown(f"**{STEP_LABELS.get(step.name, step.name)}**")
             status_badge(job.step_status(step))
             if acb is None:
-                st.caption(job.aos.agent(step.agent_id).name)
+                st.caption(", ".join(step.capabilities) or step.agent_id)
             else:
-                agents = " → ".join(job.aos.agent(a).name for a in acb.agents_tried) or job.aos.agent(acb.agent_id).name
+                agents = " → ".join(job.aos.agent(a).name for a in acb.agents_tried) or "awaiting dispatch"
                 st.caption(f"{acb.task_id} · {agents}")
                 st.caption(f"Attempts: {acb.attempts} · Duration: {fmt_seconds(acb.duration)}")
 
@@ -299,9 +301,13 @@ def page_agents() -> None:
         backups = {a.id: aos.recovery.backup_for(a.id) for a in aos.agents}
         st.subheader("Agents")
         live_now = mgr.busy
+        records = {r.agent.id: r for r in aos.registry.records()}
         show_table(pd.DataFrame([{
             "Agent": a.name,
-            "ID": a.id,
+            "Type": records[a.id].agent_type,
+            "Capabilities": ", ".join(sorted(a.capabilities)) or "-",
+            "Available": "yes" if records[a.id].available else "no",
+            "Dispatched": records[a.id].dispatch_count,
             "State": a.state.value,
             "Granted capabilities": ", ".join(sorted(aos.permissions.capabilities(a.id))) or "-",
             "Sensitive (needs approval)": ", ".join(sorted(aos.permissions.capabilities(a.id) & aos.permissions.sensitive_actions)) or "-",
@@ -310,15 +316,14 @@ def page_agents() -> None:
         } for a in aos.agents]), live=live_now)
 
         st.subheader("Tasks (Agent Control Blocks)")
-        step_of = {s.agent_id: s.name for s in job.steps}
         tasks = aos.tasks
         if not tasks:
             st.caption("No tasks submitted yet.")
             return
         show_table(pd.DataFrame([{
             "Task": a.task_id,
-            "Step": step_of.get(a.original_agent_id, "-"),
-            "Agent(s)": " → ".join(aos.agent(i).name for i in a.agents_tried) or aos.agent(a.agent_id).name,
+            "Step": a.label or "-",
+            "Agent(s)": " → ".join(aos.agent(i).name for i in a.agents_tried) or "-",
             "State": a.state.value,
             "Outcome": a.outcome,
             "Attempts": a.attempts,
@@ -380,8 +385,8 @@ def page_audit() -> None:
                     border=True)
 
         f1, f2, f3 = st.columns([2, 1, 2])
-        cats = f1.multiselect("Category", ["Lifecycle", "Recovery", "Permission"],
-                              default=["Lifecycle", "Recovery", "Permission"], key=f"cat-{source}")
+        cats = f1.multiselect("Category", ["Lifecycle", "Dispatch", "Recovery", "Permission"],
+                              default=["Lifecycle", "Dispatch", "Recovery", "Permission"], key=f"cat-{source}")
         tasks = f2.selectbox("Task", ["All"] + sorted(t for t in df["Task"].unique() if t != "-"), key=f"task-{source}")
         text = f3.text_input("Search", placeholder="agent, action, error ...", key=f"q-{source}")
         view = df[df["Category"].isin(cats)]

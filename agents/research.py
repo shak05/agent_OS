@@ -32,7 +32,8 @@ class ResearchAgent(Agent):
         seed: Optional[int] = None,
         agent_id: Optional[str] = None,
     ) -> None:
-        super().__init__(name, permissions=["web_search"], agent_id=agent_id)
+        super().__init__(name, permissions=["web_search"], agent_id=agent_id,
+                         capabilities=["web_research"])
         self.delay = delay
         self.failure_rate = failure_rate
         self.fail_first = fail_first

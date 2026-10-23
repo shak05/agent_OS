@@ -2,7 +2,7 @@
 
 Run from the agentos/ folder:
     python main.py        # interactive menu
-    python main.py 2      # run one option directly (1-5), then exit
+    python main.py 2      # run one option directly (1-6), then exit
 """
 from __future__ import annotations
 
@@ -28,6 +28,7 @@ MENU = """
   3) Run the 100-agent scheduling benchmark (FIFO vs Priority vs Aging)
   4) Show the audit log and agents-used table of the last workflow
   5) Run the runtime smoke demo (5 dummy agents, every recovery path)
+  6) Registry & dispatcher demo (9 agent instances, capability matching)
   0) Exit
 """
 
@@ -48,7 +49,8 @@ def option_workflow() -> None:
 
 def option_forced_failure() -> None:
     global last_aos
-    print("The primary ResearchAgent is DOWN. AgentOS will retry it, then reassign to the backup.")
+    print("research-01 (the first research instance the dispatcher picks) is DOWN. AgentOS will retry it,\n"
+          "then the dispatcher reassigns the task to another compatible research instance.")
     last_aos, _ = run_demo(fail="reassign", confirm="auto-approve")
 
 
@@ -79,19 +81,26 @@ def option_smoke() -> None:
     smoke_demo.main()
 
 
+def option_registry() -> None:
+    from demo import registry_demo
+
+    registry_demo.main()
+
+
 OPTIONS: dict[str, Callable[[], None]] = {
     "1": option_workflow,
     "2": option_forced_failure,
     "3": option_benchmark,
     "4": option_show_log,
     "5": option_smoke,
+    "6": option_registry,
 }
 
 
 def main(argv: list[str]) -> None:
     if argv:  # one-shot mode, e.g. `python main.py 3`
         if argv[0] not in OPTIONS:
-            sys.exit(f"Unknown option {argv[0]!r}; choose 1-5.")
+            sys.exit(f"Unknown option {argv[0]!r}; choose 1-6.")
         OPTIONS[argv[0]]()
         return
 
@@ -107,7 +116,7 @@ def main(argv: list[str]) -> None:
             return
         action = OPTIONS.get(choice)
         if action is None:
-            print("Please choose 0-5.")
+            print("Please choose 0-6.")
             continue
         print()
         try:

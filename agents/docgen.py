@@ -18,7 +18,8 @@ class DocGenAgent(Agent):
     """Builds a title slide, a summary slide, a key-points slide and a sources slide."""
 
     def __init__(self, name: str = "DocGenAgent", agent_id: Optional[str] = None) -> None:
-        super().__init__(name, permissions=["write_file"], agent_id=agent_id)
+        super().__init__(name, permissions=["write_file"], agent_id=agent_id,
+                         capabilities=["document_generation"])
 
     def run(self, task_input: dict[str, Any]) -> dict[str, Any]:
         research = task_input["research"]

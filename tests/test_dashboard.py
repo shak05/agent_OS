@@ -124,7 +124,7 @@ def test_workflow_job_shows_real_recovery(tmp_path) -> None:
     job.broker.resolve(wait_for_pending(job.broker).request_id, True)
     assert job.wait(10) and job.succeeded
     research = job.step_acb(job.steps[0])
-    assert research.agents_tried == ["researchagent", "research-backup"]
+    assert research.agents_tried == ["research-01", "research-02"]  # dispatcher-chosen replacement
     assert job.aos.audit.count("retried") == 2 and job.aos.audit.count("reassigned") == 1
 
 

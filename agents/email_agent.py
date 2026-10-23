@@ -44,7 +44,8 @@ class EmailAgent(Agent):
         transport: Optional[MockMailTransport] = None,
         agent_id: Optional[str] = None,
     ) -> None:
-        super().__init__(name, permissions=["send_email"], agent_id=agent_id)
+        super().__init__(name, permissions=["send_email"], agent_id=agent_id,
+                         capabilities=["email_send"])
         self.transport = transport or MockMailTransport()
 
     def run(self, task_input: dict[str, Any]) -> dict[str, Any]:

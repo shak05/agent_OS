@@ -10,6 +10,9 @@ from typing import Any, Iterable, Optional, Union
 
 EVENT_TYPES = (
     "submitted",
+    "scheduled",  # scheduler picked this task (which task runs next)
+    "dispatched",  # dispatcher bound an agent instance (who runs it)
+    "dispatch_failed",  # no eligible instance for the task
     "started",
     "completed",
     "failed",
@@ -28,8 +31,10 @@ class AuditEvent:
     timestamp: str
     event: str
     task_id: Optional[str] = None
-    agent: Optional[str] = None
+    agent: Optional[str] = None  # agent name, for readability
     details: dict[str, Any] = field(default_factory=dict)
+    agent_id: Optional[str] = None  # instance id; None when no instance is bound yet
+    agent_type: Optional[str] = None  # agent class, e.g. "ResearchAgent"
 
     def format(self) -> str:
         time_part = self.timestamp[11:23]  # HH:MM:SS.mmm
@@ -46,7 +51,13 @@ class AuditLog:
         self._lock = threading.Lock()
 
     def record(
-        self, event: str, task_id: Optional[str] = None, agent: Optional[str] = None, **details: Any
+        self,
+        event: str,
+        task_id: Optional[str] = None,
+        agent: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        agent_type: Optional[str] = None,
+        **details: Any,
     ) -> AuditEvent:
         if event not in EVENT_TYPES:
             raise ValueError(f"Unknown audit event type: {event!r}")
@@ -56,6 +67,8 @@ class AuditLog:
             task_id=task_id,
             agent=agent,
             details=details,
+            agent_id=agent_id,
+            agent_type=agent_type,
         )
         with self._lock:
             self._events.append(entry)

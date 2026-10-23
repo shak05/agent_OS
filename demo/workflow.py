@@ -2,7 +2,7 @@
 
 Run from the agentos/ folder:
     python -m demo.workflow                       # normal run
-    python -m demo.workflow --fail reassign       # primary researcher is down
+    python -m demo.workflow --fail reassign       # research-01 is down; dispatcher reassigns
     python -m demo.workflow --confirm interactive # you approve the email
 """
 from __future__ import annotations
@@ -13,8 +13,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional, Union
 
-from agents import DocGenAgent, EmailAgent, FileManagerAgent, MockMailTransport, ResearchAgent
 from agents.docgen import slugify
+from demo.fleet import STEP_CAPABILITIES, register_demo_fleet
 from runtime import AgentOS, PriorityPolicy
 from runtime.acb import AgentControlBlock
 from runtime.permissions import ConfirmCallback
@@ -23,13 +23,18 @@ from runtime.sandbox import DEFAULT_OUTPUT_DIR
 
 @dataclass
 class WorkflowStep:
-    """One node in the workflow graph."""
+    """One node in the workflow graph.
+
+    Set `capabilities` to let the dispatcher pick a compatible instance
+    (agent_id ""), or set `agent_id` to pin the step to one instance.
+    """
 
     name: str
     agent_id: str
     make_input: Callable[[dict[str, Any]], Any]  # gets results of earlier steps by name
     depends_on: tuple[str, ...] = ()
     priority: int = 5
+    capabilities: tuple[str, ...] = ()
 
 
 @dataclass
@@ -75,20 +80,22 @@ def run_workflow(aos: AgentOS, steps: list[WorkflowStep], verbose: bool = True) 
     ordered = order_steps(steps)
     for i, step in enumerate(ordered, 1):
         blocked = [d for d in step.depends_on if d not in results]
-        agent_name = aos.agent(step.agent_id).name
+        target = aos.agent(step.agent_id).name if step.agent_id else f"dispatch by capability [{', '.join(step.capabilities)}]"
         if blocked:
             run.skipped.append(step.name)
             if verbose:
                 print(f"\n[{i}/{len(ordered)}] {step.name}: SKIPPED (waiting on failed {blocked})")
             continue
         if verbose:
-            print(f"\n[{i}/{len(ordered)}] {step.name} -> {agent_name}")
-        acb = aos.run_task(step.agent_id, step.make_input(results), priority=step.priority)
+            print(f"\n[{i}/{len(ordered)}] {step.name} -> {target}")
+        acb = aos.run_task(step.agent_id or None, step.make_input(results), priority=step.priority,
+                           required_capabilities=step.capabilities, label=step.name)
         run.acbs[step.name] = acb
         if acb.outcome == "completed":
             results[step.name] = acb.result
         if verbose:
-            print(f"      => {acb.outcome.upper()}" + (f": {acb.error}" if acb.error and acb.outcome != "completed" else ""))
+            ran_on = f" on {aos.agent(acb.agent_id).name}" if acb.agent_id in aos.registry else ""
+            print(f"      => {acb.outcome.upper()}{ran_on}" + (f": {acb.error}" if acb.error and acb.outcome != "completed" else ""))
     return run
 
 
@@ -99,43 +106,41 @@ def build_report_workflow(
     fail: str = "none",
     research_delay: float = 0.3,
 ) -> list[WorkflowStep]:
-    """Register the four demo agents (+ a backup researcher) and return the steps.
+    """Register the demo fleet (9 instances) and return capability-based steps.
 
-    fail: "none" | "retry" (primary fails once) | "reassign" (primary is down,
-    so AgentOS retries, then reassigns to the backup researcher).
+    Every step is dispatched by capability, so the dispatcher picks the
+    instance. In a fresh registry it picks research-01 first, so the forced
+    failure is injected there:
+    fail: "none" | "retry" (research-01 fails once) | "reassign" (research-01
+    is down, so AgentOS retries it, then the dispatcher reassigns the task to
+    another compatible research instance).
     """
-    fail_first = {"none": 0, "retry": 1, "reassign": 10**6}[fail]
-    research = aos.register(ResearchAgent("ResearchAgent", delay=research_delay, fail_first=fail_first))
-    aos.register(
-        ResearchAgent("BackupResearchAgent", delay=research_delay, agent_id="research-backup"),
-        backup_for=research,
-    )
-    docgen = aos.register(DocGenAgent())
-    files = aos.register(FileManagerAgent())
-    email = aos.register(EmailAgent(transport=MockMailTransport(aos.sandbox.root / "sent_emails.json")))
+    fleet = register_demo_fleet(aos, research_delay=research_delay)
+    fleet["research"][0].fail_first = {"none": 0, "retry": 1, "reassign": 10**6}[fail]
 
     slug = slugify(topic)
+    caps = STEP_CAPABILITIES
     return [
-        WorkflowStep("research", research.id, lambda r: {"topic": topic}),
+        WorkflowStep("research", "", lambda r: {"topic": topic}, capabilities=caps["research"]),
         WorkflowStep(
-            "docgen", docgen.id,
+            "docgen", "",
             lambda r: {"research": r["research"], "filename": f"drafts/{slug}.pptx"},
-            depends_on=("research",),
+            depends_on=("research",), capabilities=caps["docgen"],
         ),
         WorkflowStep(
-            "file", files.id,
+            "file", "",
             lambda r: {"src": r["docgen"]["path"], "dest": f"reports/{slug}.pptx", "mode": "move"},
-            depends_on=("docgen",),
+            depends_on=("docgen",), capabilities=caps["file"],
         ),
         WorkflowStep(
-            "email", email.id,
+            "email", "",
             lambda r: {
                 "to": recipient,
                 "subject": f"Report: {topic}",
                 "body": r["research"]["summary"],
                 "attachment": r["file"]["path"],
             },
-            depends_on=("research", "file"),
+            depends_on=("research", "file"), capabilities=caps["email"],
         ),
     ]
 

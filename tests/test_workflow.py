@@ -27,8 +27,11 @@ def test_workflow_recovers_by_reassigning_research(tmp_path) -> None:
     aos, run = run_demo(fail="reassign", sandbox_root=tmp_path, research_delay=0, verbose=False)
     assert run.succeeded
     research = run.acbs["research"]
-    assert research.agents_tried == ["researchagent", "research-backup"]
+    # Stage 6: no fixed backup any more. research-01 (the dispatcher's first pick)
+    # is down; recovery asks the dispatcher for another compatible instance.
+    assert research.agents_tried == ["research-01", "research-02"]
     assert aos.audit.count("retried") == 2 and aos.audit.count("reassigned") == 1
+    assert aos.audit.events("reassigned")[0].details["via"] == "dispatcher"
 
 
 def test_workflow_recovers_by_retry(tmp_path) -> None:

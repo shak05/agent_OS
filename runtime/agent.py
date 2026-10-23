@@ -38,12 +38,16 @@ class Agent:
         name: str,
         permissions: Iterable[str] = (),
         agent_id: Optional[str] = None,
+        capabilities: Iterable[str] = (),
     ) -> None:
         self.name = name
         self.id = agent_id or _slug(name)
-        # Capabilities this agent declares it needs (like an app manifest).
+        # Permissions this agent declares it needs (like an app manifest).
         # The kernel's PermissionManager decides what is actually granted.
         self.permissions: list[str] = list(permissions)
+        # What this agent CAN do (e.g. "web_research"). Used by the dispatcher
+        # to match tasks to agents. A capability is never an authorization.
+        self.capabilities: frozenset[str] = frozenset(capabilities)
         # Reflects the most recent task; per-task truth is in the ACB.
         self.state = AgentState.IDLE
         self._kernel: Optional["AgentOS"] = None

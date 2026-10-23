@@ -21,10 +21,12 @@ STATUS_STYLE: dict[str, tuple[str, str]] = {
     "rejected": ("red", ":material/cancel:"),
     "failed": ("red", ":material/error:"),
     "incomplete": ("orange", ":material/warning:"),
+    "no_agent": ("red", ":material/person_off:"),
 }
 
 EVENT_CATEGORY = {
-    "submitted": "Lifecycle", "started": "Lifecycle", "completed": "Lifecycle",
+    "submitted": "Lifecycle", "scheduled": "Lifecycle", "started": "Lifecycle", "completed": "Lifecycle",
+    "dispatched": "Dispatch", "dispatch_failed": "Dispatch",
     "failed": "Recovery", "retried": "Recovery", "reassigned": "Recovery", "escalated": "Recovery",
     "permission_allowed": "Permission", "permission_denied": "Permission",
     "permission_confirmed": "Permission", "permission_rejected": "Permission",
