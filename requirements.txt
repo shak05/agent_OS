@@ -1,0 +1,4 @@
+python-pptx>=0.6.21
+matplotlib>=3.7
+pytest>=7.4
+streamlit>=1.50  # Stage 5 dashboard; tested with 1.66.1

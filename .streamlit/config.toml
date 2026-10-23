@@ -1,0 +1,15 @@
+# Streamlit settings for the AgentOS dashboard (read when launched from the agentos/ folder).
+
+[browser]
+# Keep the dashboard fully offline: no usage statistics are sent anywhere.
+gatherUsageStats = false
+
+[server]
+# Only reachable from this computer.
+address = "localhost"
+
+[client]
+toolbarMode = "minimal"
+
+[theme]
+primaryColor = "#2a78d6"
