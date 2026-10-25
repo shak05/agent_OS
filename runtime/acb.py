@@ -26,6 +26,7 @@ class AgentControlBlock:
     required_permissions: tuple[str, ...] = ()
     required_capabilities: tuple[str, ...] = ()  # used by the dispatcher
     label: str = ""  # free-form tag, e.g. the workflow step name
+    metadata: dict[str, Any] = field(default_factory=dict)  # facts agents report via annotate()
     state: AgentState = AgentState.WAITING
     submit_time: float = field(default_factory=now)
     start_time: Optional[float] = None

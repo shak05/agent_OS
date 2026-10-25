@@ -8,23 +8,27 @@ from pptx import Presentation
 
 from agents import FileManagerAgent
 from demo.workflow import WorkflowStep, order_steps, run_demo
+from llm import MockLLMClient
 from runtime import AgentOS
 
 
 def test_workflow_end_to_end(tmp_path) -> None:
-    aos, run = run_demo(sandbox_root=tmp_path, research_delay=0, verbose=False)
+    aos, run = run_demo(sandbox_root=tmp_path, research_delay=0, verbose=False, llm=MockLLMClient())
     assert run.succeeded
     report = tmp_path / "reports" / "ai-agents-in-healthcare.pptx"
     assert report.is_file()
     assert not (tmp_path / "drafts" / "ai-agents-in-healthcare.pptx").exists()  # moved
-    assert len(Presentation(report).slides) == 4
+    # Stage 7: slides now carry the research findings (title, summary, findings,
+    # reasoning, conclusions, assumptions, sources & method) instead of 4 fixed slides.
+    titles = [s.shapes.title.text for s in Presentation(report).slides]
+    assert titles[1:3] == ["Summary", "Key findings"] and titles[-1] == "Sources & method"
     sent = json.loads((tmp_path / "sent_emails.json").read_text(encoding="utf-8"))
     assert sent[-1]["attachment"] == "reports/ai-agents-in-healthcare.pptx"
     assert aos.audit.count("permission_confirmed") == 1
 
 
 def test_workflow_recovers_by_reassigning_research(tmp_path) -> None:
-    aos, run = run_demo(fail="reassign", sandbox_root=tmp_path, research_delay=0, verbose=False)
+    aos, run = run_demo(fail="reassign", sandbox_root=tmp_path, research_delay=0, verbose=False, llm=MockLLMClient())
     assert run.succeeded
     research = run.acbs["research"]
     # Stage 6: no fixed backup any more. research-01 (the dispatcher's first pick)
@@ -35,14 +39,14 @@ def test_workflow_recovers_by_reassigning_research(tmp_path) -> None:
 
 
 def test_workflow_recovers_by_retry(tmp_path) -> None:
-    aos, run = run_demo(fail="retry", sandbox_root=tmp_path, research_delay=0, verbose=False)
+    aos, run = run_demo(fail="retry", sandbox_root=tmp_path, research_delay=0, verbose=False, llm=MockLLMClient())
     assert run.succeeded
     assert run.acbs["research"].attempts == 2
     assert aos.audit.count("reassigned") == 0
 
 
 def test_email_rejected_means_nothing_sent(tmp_path) -> None:
-    _, run = run_demo(confirm="auto-deny", sandbox_root=tmp_path, research_delay=0, verbose=False)
+    _, run = run_demo(confirm="auto-deny", sandbox_root=tmp_path, research_delay=0, verbose=False, llm=MockLLMClient())
     assert not run.succeeded
     assert run.acbs["email"].outcome == "rejected"
     assert not (tmp_path / "sent_emails.json").exists()

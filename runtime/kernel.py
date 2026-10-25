@@ -214,6 +214,12 @@ class AgentOS:
         return acb
 
     # ---------------------------------------------------------------- syscalls
+    def syscall_annotate(self, agent: Agent, info: dict[str, Any]) -> None:
+        """Called by Agent.annotate(): record facts (e.g. model used) on the current task."""
+        acb: Optional[AgentControlBlock] = getattr(self._current, "acb", None)
+        if acb is not None:
+            acb.metadata.update(info)
+
     def syscall_permission(self, agent: Agent, action: str, detail: str = "") -> None:
         """Called by Agent.request_permission(). Raises if not allowed."""
         acb: Optional[AgentControlBlock] = getattr(self._current, "acb", None)
@@ -257,12 +263,12 @@ class AgentOS:
                     agent.state = AgentState.FAILED
                     outcome = "rejected" if isinstance(exc, ConfirmationRejectedError) else "denied"
                     self._finish(acb, AgentState.FAILED, outcome, error=str(exc))
-                    self._emit("failed", acb, error=str(exc), outcome=outcome)
+                    self._emit("failed", acb, error=str(exc), outcome=outcome, **acb.metadata)
                     return
                 except Exception as exc:  # agent crashed -> recovery engine decides
                     agent.state = AgentState.FAILED
                     acb.error = f"{type(exc).__name__}: {exc}"
-                    self._emit("failed", acb, attempt=acb.attempts, error=acb.error)
+                    self._emit("failed", acb, attempt=acb.attempts, error=acb.error, **acb.metadata)
                     decision = self.recovery.decide(
                         acb,
                         is_eligible=lambda aid: self._eligible_for(acb, aid),
@@ -284,12 +290,12 @@ class AgentOS:
                         acb.agent_id = new_agent.id
                         continue
                     self._finish(acb, AgentState.FAILED, "escalated", error=acb.error)
-                    self._emit("escalated", acb, attempts=acb.attempts, error=acb.error)
+                    self._emit("escalated", acb, attempts=acb.attempts, error=acb.error, **acb.metadata)
                     return
                 else:
                     agent.state = AgentState.COMPLETED
                     self._finish(acb, AgentState.COMPLETED, "completed", result=result)
-                    self._emit("completed", acb, attempts=acb.attempts)
+                    self._emit("completed", acb, attempts=acb.attempts, **acb.metadata)
                     return
         finally:
             self._current.acb = None

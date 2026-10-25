@@ -23,7 +23,7 @@ BANNER = r"""
 """
 
 MENU = """
-  1) Run the 4-agent workflow (Research -> DocGen -> FileManager -> Email)
+  1) Run the 4-agent workflow (Research uses local Ollama llama3 -> DocGen -> FileManager -> Email)
   2) Run the workflow with a forced failure (shows retry + reassignment)
   3) Run the 100-agent scheduling benchmark (FIFO vs Priority vs Aging)
   4) Show the audit log and agents-used table of the last workflow

@@ -12,6 +12,7 @@ from dashboard.approval import ApprovalBroker
 from dashboard.files import OutputFiles, UnsafeFileError
 from dashboard.jobs import JobAlreadyRunning, JobManager, WorkflowJob
 from demo.benchmark import PolicyResult, load_results, save_results
+from llm import MockLLMClient
 from runtime import Agent, AgentOS
 
 
@@ -84,7 +85,7 @@ def test_broker_plugs_into_permission_manager() -> None:
 
 # ------------------------------------------------------------------ workflow jobs
 def _manager(tmp_path: Path, timeout: float = 10.0) -> JobManager:
-    return JobManager(sandbox_root=tmp_path, research_delay=0, approval_timeout=timeout)
+    return JobManager(sandbox_root=tmp_path, research_delay=0, approval_timeout=timeout, llm=MockLLMClient())
 
 
 def test_workflow_job_waits_for_human_then_completes(tmp_path) -> None:

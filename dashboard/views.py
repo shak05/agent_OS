@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Optional
@@ -111,7 +112,8 @@ def sidebar() -> None:
 
         watcher()
         st.divider()
-        st.caption("All agents are mock and run offline. Files are confined to ./output.")
+        st.caption("Research uses a local Ollama model; the other agents are mock. "
+                   "Everything runs offline. Files are confined to ./output.")
 
 
 # ---------------------------------------------------------------- overview
@@ -135,7 +137,7 @@ def page_overview() -> None:
             st.caption(text)
 
     st.subheader("Demo workflow")
-    steps = [("Research", "web_search"), ("DocGen", "write_file"), ("FileManager", "read/write_file"), ("Email", "send_email · needs approval")]
+    steps = [("Research", "llm_inference · local Ollama"), ("DocGen", "write_file"), ("FileManager", "read/write_file"), ("Email", "send_email · needs approval")]
     cols = st.columns([4, 1, 4, 1, 4, 1, 4])
     for i, (name, perm) in enumerate(steps):
         with cols[i * 2].container(border=True, height="stretch"):
@@ -232,6 +234,8 @@ def render_workflow_live(job: WorkflowJob) -> None:
                 agents = " → ".join(job.aos.agent(a).name for a in acb.agents_tried) or "awaiting dispatch"
                 st.caption(f"{acb.task_id} · {agents}")
                 st.caption(f"Attempts: {acb.attempts} · Duration: {fmt_seconds(acb.duration)}")
+                if acb.metadata.get("llm_model"):
+                    st.caption(f"Model: {acb.metadata['llm_model']} ({acb.metadata.get('llm_backend', '?')})")
 
     recovery = [asdict(e) for e in job.aos.audit.events() if e.event in RECOVERY_EVENTS]
     if recovery:
@@ -255,6 +259,17 @@ def render_workflow_live(job: WorkflowJob) -> None:
                     st.code(acb.error, language=None, wrap_lines=True)
 
 
+def llm_status() -> tuple[bool, str]:
+    """Reachability of the research model, cached for a few seconds per page render."""
+    now = time.time()
+    cached = st.session_state.get("llm_status")
+    if cached and now - cached[0] < 10:
+        return cached[1]
+    status = get_manager().llm.health(timeout=2.0)
+    st.session_state["llm_status"] = (now, status)
+    return status
+
+
 def page_workflow() -> None:
     mgr = get_manager()
     hero("Workflow Runner", "Research → DocGen → FileManager → Email, executed by the AgentOS kernel.")
@@ -268,6 +283,16 @@ def page_workflow() -> None:
                  disabled=mgr.busy)
         st.caption(":material/shield: The email step needs **your approval on this page**. "
                    "Nothing is approved automatically; no answer within 5 minutes means rejected.")
+        llm_ok, llm_msg = llm_status()
+        if mgr.llm.backend == "mock":
+            st.warning(f"Research uses a **mock LLM** ({llm_msg}): placeholder text, not real analysis.",
+                       icon=":material/science:")
+        elif llm_ok:
+            st.caption(f":material/psychology: Research: local LLM analysis with {llm_msg} "
+                       "(no web access; one answer can take a minute or two).")
+        else:
+            st.error(f"Research model unavailable: {llm_msg}. The research step will fail and "
+                     "later steps will be skipped.", icon=":material/error:")
         st.button("Run workflow", type="primary", icon=":material/play_arrow:", disabled=mgr.busy,
                   on_click=_start_workflow, help="Disabled while another job is running")
 

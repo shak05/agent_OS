@@ -65,6 +65,12 @@ class Agent:
             raise RuntimeError(f"Agent '{self.name}' is not registered with AgentOS")
         self._kernel.syscall_permission(self, action, detail)
 
+    def annotate(self, **info: Any) -> None:
+        """System call: attach facts about the current task (e.g. the model used)
+        so the kernel can include them in the task's audit events."""
+        if self._kernel is not None:
+            self._kernel.syscall_annotate(self, info)
+
     def sandbox_path(self, relative: str, action: str) -> "Path":
         """System call: get a file path inside the sandbox for `action`
         ('read_file' or 'write_file'). Raises PermissionDeniedError if the

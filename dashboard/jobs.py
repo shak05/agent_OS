@@ -14,7 +14,7 @@ from typing import Any, Optional, Union
 
 from dashboard.approval import ApprovalBroker
 from demo.benchmark import PolicyResult, run_benchmark, save_chart, save_results
-from demo.workflow import WorkflowRun, WorkflowStep, create_demo_os, run_workflow
+from demo.workflow import WorkflowRun, WorkflowStep, create_demo_os, research_client, run_workflow
 from runtime.acb import AgentControlBlock
 from runtime.kernel import AgentOS
 from runtime.sandbox import DEFAULT_OUTPUT_DIR
@@ -89,8 +89,9 @@ class WorkflowJob(Job):
         mode: str = "none",
         topic: str = "AI Agents in Healthcare",
         sandbox_root: Union[str, Path] = DEFAULT_OUTPUT_DIR,
-        research_delay: float = 0.3,
+        research_delay: float = 0.0,
         approval_timeout: float = 300.0,
+        llm: Any = None,
     ) -> None:
         super().__init__()
         if mode not in WORKFLOW_MODES:
@@ -103,8 +104,9 @@ class WorkflowJob(Job):
         self.steps: list[WorkflowStep]
         self.aos, self.steps = create_demo_os(
             fail=mode, confirm=self.broker, topic=topic,
-            sandbox_root=sandbox_root, research_delay=research_delay,
+            sandbox_root=sandbox_root, research_delay=research_delay, llm=llm,
         )
+        self.llm = research_client(self.aos)  # shown in the UI (real Ollama unless a mock was injected)
         self.run_result: Optional[WorkflowRun] = None
         self.audit_path: Optional[Path] = None
 
@@ -181,9 +183,16 @@ class JobManager:
     def __init__(
         self,
         sandbox_root: Union[str, Path] = DEFAULT_OUTPUT_DIR,
-        research_delay: float = 0.3,
+        research_delay: float = 0.0,
         approval_timeout: float = 300.0,
+        llm: Any = None,
     ) -> None:
+        """llm: client for research agents; None = real local Ollama (from env)."""
+        if llm is None:
+            from llm import OllamaClient
+
+            llm = OllamaClient()
+        self.llm = llm
         self.sandbox_root = Path(sandbox_root)
         self.research_delay = research_delay
         self.approval_timeout = approval_timeout
@@ -201,7 +210,7 @@ class JobManager:
             self._ensure_idle()
             job = WorkflowJob(
                 mode, topic.strip() or "AI Agents in Healthcare", self.sandbox_root,
-                self.research_delay, self.approval_timeout,
+                self.research_delay, self.approval_timeout, self.llm,
             )
             self.current = self.last_workflow = job
             job.start()

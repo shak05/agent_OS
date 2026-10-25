@@ -4,6 +4,7 @@ Run from the agentos/ folder:
     python -m demo.workflow                       # normal run
     python -m demo.workflow --fail reassign       # research-01 is down; dispatcher reassigns
     python -m demo.workflow --confirm interactive # you approve the email
+    python -m demo.workflow --llm mock            # explicit mock LLM (no Ollama needed)
 """
 from __future__ import annotations
 
@@ -11,7 +12,7 @@ import argparse
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Optional, Union
 
 from agents.docgen import slugify
 from demo.fleet import STEP_CAPABILITIES, register_demo_fleet
@@ -19,6 +20,9 @@ from runtime import AgentOS, PriorityPolicy
 from runtime.acb import AgentControlBlock
 from runtime.permissions import ConfirmCallback
 from runtime.sandbox import DEFAULT_OUTPUT_DIR
+
+if TYPE_CHECKING:
+    from llm import LLMClient
 
 
 @dataclass
@@ -104,7 +108,8 @@ def build_report_workflow(
     topic: str = "AI Agents in Healthcare",
     recipient: str = "supervisor@university.example",
     fail: str = "none",
-    research_delay: float = 0.3,
+    research_delay: float = 0.0,
+    llm: Optional["LLMClient"] = None,
 ) -> list[WorkflowStep]:
     """Register the demo fleet (9 instances) and return capability-based steps.
 
@@ -115,7 +120,7 @@ def build_report_workflow(
     is down, so AgentOS retries it, then the dispatcher reassigns the task to
     another compatible research instance).
     """
-    fleet = register_demo_fleet(aos, research_delay=research_delay)
+    fleet = register_demo_fleet(aos, research_delay=research_delay, llm=llm)
     fleet["research"][0].fail_first = {"none": 0, "retry": 1, "reassign": 10**6}[fail]
 
     slug = slugify(topic)
@@ -150,14 +155,25 @@ def create_demo_os(
     confirm: Union[str, ConfirmCallback] = "auto-approve",
     topic: str = "AI Agents in Healthcare",
     sandbox_root: Union[str, Path] = DEFAULT_OUTPUT_DIR,
-    research_delay: float = 0.3,
+    research_delay: float = 0.0,
     echo: bool = False,
+    llm: Optional["LLMClient"] = None,
 ) -> tuple[AgentOS, list[WorkflowStep]]:
-    """Build a fresh AgentOS with the demo agents registered; return it and the steps."""
+    """Build a fresh AgentOS with the demo agents registered; return it and the steps.
+
+    `llm` defaults to a real local Ollama client; pass MockLLMClient() explicitly
+    for tests or offline demos.
+    """
     aos = AgentOS(policy=PriorityPolicy(), confirm=confirm, max_retries=2,
                   echo=echo, sandbox_root=sandbox_root)
-    steps = build_report_workflow(aos, topic=topic, fail=fail, research_delay=research_delay)
+    steps = build_report_workflow(aos, topic=topic, fail=fail, research_delay=research_delay, llm=llm)
     return aos, steps
+
+
+def research_client(aos: AgentOS) -> Any:
+    """The LLM client used by the registered research instances (None if there are none)."""
+    research = [a for a in aos.agents if "web_research" in a.capabilities and hasattr(a, "llm")]
+    return research[0].llm if research else None
 
 
 def run_demo(
@@ -165,18 +181,33 @@ def run_demo(
     confirm: Union[str, ConfirmCallback] = "auto-approve",
     topic: str = "AI Agents in Healthcare",
     sandbox_root: Union[str, Path] = DEFAULT_OUTPUT_DIR,
-    research_delay: float = 0.3,
+    research_delay: float = 0.0,
     verbose: bool = True,
+    llm: Optional["LLMClient"] = None,
 ) -> tuple[AgentOS, WorkflowRun]:
     """Build a fresh AgentOS, run the 4-agent workflow and print a summary."""
-    aos, steps = create_demo_os(fail, confirm, topic, sandbox_root, research_delay, echo=verbose)
+    aos, steps = create_demo_os(fail, confirm, topic, sandbox_root, research_delay, echo=verbose, llm=llm)
     if verbose:
         print(f"=== AgentOS workflow: Research -> DocGen -> FileManager -> Email (fail={fail}) ===")
+        client = research_client(aos)
+        ok, message = client.health()
+        print(f"Research backend: {client.describe()}")
+        if client.backend == "mock":
+            print("  NOTE: mock LLM selected explicitly - research output is placeholder text, not real analysis.")
+        elif not ok:
+            print(f"  WARNING: {message}\n  Research will fail and dependent steps will be skipped.")
+        else:
+            print("  Local LLM analysis (no web access). A research answer can take a minute or two.")
     run = run_workflow(aos, steps, verbose=verbose)
     if verbose:
         print("\n=== Agents used ===")
         aos.print_agents_used()
         print(f"\nWorkflow {'SUCCEEDED' if run.succeeded else 'DID NOT COMPLETE'}")
+        research = run.acbs.get("research")
+        if research is not None and research.outcome == "completed":
+            r = research.result
+            print(f"Research: {len(r['key_points'])} findings from {r['backend']} model {r['model']} "
+                  f"({r['duration_s']} s) on {research.agent_id}")
         if "file" in run.acbs and run.acbs["file"].outcome == "completed":
             print(f"Report:  {aos.sandbox.resolve(run.acbs['file'].result['path'])}")
         if "email" in run.acbs and run.acbs["email"].outcome == "completed":
@@ -190,8 +221,15 @@ def main(argv: Optional[list[str]] = None) -> None:
     parser.add_argument("--fail", choices=["none", "retry", "reassign"], default="none")
     parser.add_argument("--confirm", choices=["interactive", "auto-approve", "auto-deny"], default="auto-approve")
     parser.add_argument("--topic", default="AI Agents in Healthcare")
+    parser.add_argument("--llm", choices=["ollama", "mock"], default="ollama",
+                        help="ollama (default): real local model; mock: explicit placeholder output")
     args = parser.parse_args(argv)
-    run_demo(fail=args.fail, confirm=args.confirm, topic=args.topic)
+    llm = None
+    if args.llm == "mock":
+        from llm import MockLLMClient
+
+        llm = MockLLMClient()
+    run_demo(fail=args.fail, confirm=args.confirm, topic=args.topic, llm=llm)
 
 
 if __name__ == "__main__":

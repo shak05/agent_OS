@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any, Iterable
 
 from demo.fleet import register_demo_fleet
+from llm import MockLLMClient
 from runtime import AgentOS, FIFOPolicy, PriorityPolicy, SchedulingPolicy
 from runtime.acb import AgentControlBlock
 
@@ -39,7 +40,9 @@ def table(rows: Iterable[dict[str, Any]], columns: list[str]) -> str:
 
 def new_os(policy: SchedulingPolicy) -> AgentOS:
     aos = AgentOS(policy=policy, confirm="auto-deny", max_retries=2)
-    register_demo_fleet(aos, research_delay=DELAY)
+    # This demo is about dispatching, not model output: research instances use an
+    # explicit mock LLM so it runs in seconds without Ollama.
+    register_demo_fleet(aos, research_delay=DELAY, llm=MockLLMClient())
     return aos
 
 
@@ -81,6 +84,7 @@ def main() -> None:
     # 1. Registry -------------------------------------------------------------
     aos = new_os(PriorityPolicy())
     section(f"1. Agent Registry ({len(aos.registry)} instances)")
+    print("  (research instances use an explicit MOCK LLM here; menu options 1-2 use real Ollama)")
     print(table([{
         "Instance": r.agent.id, "Type": r.agent_type,
         "Capabilities": ", ".join(sorted(r.agent.capabilities)),
